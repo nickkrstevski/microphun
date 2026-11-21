@@ -1,0 +1,74 @@
+<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Microphun · Safari audio check</title>
+<style>body{color-scheme:dark;background:#151915;color:#eef2e9;font:16px system-ui;max-width:620px;margin:10vh auto;padding:22px}h1{font-size:30px}button{background:#c2f476;color:#182215;border:0;border-radius:8px;padding:12px 18px;font:600 16px system-ui}pre{white-space:pre-wrap;line-height:1.5;padding:12px;background:#222822;border-radius:8px}</style>
+<h1>BlackHole capture in Safari</h1><p>This checks the microphone Safari receives and a WebRTC call inside this tab. One Bonk pad will play through your current Microphun route. The test compares what Safari captures with what a second participant receives in a call inside this tab. The audio stays on your Mac. If another Safari tab is using its microphone, that tab may pause capture during this check.</p>
+<button id="run">Test BlackHole 2ch</button><pre id="log" role="status">Ready</pre>
+<script>
+const log=document.querySelector('#log'),button=document.querySelector('#run');
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const show=m=>log.textContent+='\n'+m;
+function meter(ctx,stream){
+ const node=ctx.createMediaStreamSource(stream),proc=ctx.createScriptProcessor(1024,1,1),mute=ctx.createGain(),frames=[];
+ mute.gain.value=0;proc.onaudioprocess=e=>frames.push(e.inputBuffer.getChannelData(0).slice());
+ node.connect(proc);proc.connect(mute);mute.connect(ctx.destination);
+ return {stop(){node.disconnect();proc.disconnect();mute.disconnect();proc.onaudioprocess=null;
+   const all=new Float32Array(frames.reduce((n,x)=>n+x.length,0));let pos=0;
+   for(const f of frames){all.set(f,pos);pos+=f.length}return all}};
+}
+function score(samples,ref,rate){
+ let peak=0; for(const x of samples)peak=Math.max(peak,Math.abs(x));
+ const length=Math.min(Math.floor(rate*.16),ref.length);let best=0;
+ for(let start=0;start+length<samples.length;start+=8){
+   let xx=0,xy=0,yy=0;for(let i=0;i<length;i+=32){const a=ref[i],b=samples[start+i];xx+=a*a;xy+=a*b;yy+=b*b}
+   best=Math.max(best,xy/Math.sqrt(xx*yy+1e-24))
+ }return {frames:samples.length,peak:+peak.toFixed(4),match:+best.toFixed(3)};
+}
+
+
+async function post(path, data) {
+ const r=await fetch(path,{method:'POST',body:JSON.stringify(data)});
+ if(!r.ok)throw Error(await r.text());
+ return r.json();
+}
+button.onclick=async()=>{
+ button.disabled=true;log.textContent='Opening BlackHole…';
+ let ctx,stream,a,b,local,remote;
+ try {
+  ctx=new AudioContext();
+  let devices=await navigator.mediaDevices.enumerateDevices();
+  if(!devices.some(d=>d.kind==='audioinput'&&d.label)){
+    const grant=await navigator.mediaDevices.getUserMedia({audio:true});
+    devices=await navigator.mediaDevices.enumerateDevices();grant.getTracks().forEach(t=>t.stop());
+  }
+  const d=devices.find(d=>d.kind==='audioinput'&&/BlackHole 2ch/i.test(d.label));
+  if(!d)throw Error('BlackHole 2ch is missing.');
+  stream=await navigator.mediaDevices.getUserMedia({audio:{deviceId:{exact:d.deviceId},echoCancellation:false,noiseSuppression:false,autoGainControl:true}});
+  const track=stream.getAudioTracks()[0];
+  await Promise.race([ctx.resume(),sleep(2000)]);
+  if(ctx.state!=='running')throw Error('The Safari audio meter is paused. Bring this tab to the front and retry.');
+  const ref=(await ctx.decodeAudioData(await (await fetch('reference')).arrayBuffer())).getChannelData(0);
+  a=new RTCPeerConnection({iceServers:[]}); b=new RTCPeerConnection({iceServers:[]});
+  const queues=[[],[]];
+  function transfer(from,to,q){from.onicecandidate=e=>{if(e.candidate){if(to.remoteDescription)to.addIceCandidate(e.candidate).catch(()=>{});else q.push(e.candidate)}}}
+  transfer(a,b,queues[0]);transfer(b,a,queues[1]);
+  let received;b.ontrack=e=>{received=new MediaStream([e.track])};
+  a.addTrack(track,stream);
+  await a.setLocalDescription(await a.createOffer());await b.setRemoteDescription(a.localDescription);
+  for(const x of queues[0])await b.addIceCandidate(x); await b.setLocalDescription(await b.createAnswer());await a.setRemoteDescription(b.localDescription);
+  for(const x of queues[1])await a.addIceCandidate(x);
+  for(let i=0;i<80 && a.connectionState!=='connected';i++)await sleep(100);
+
+  if(a.connectionState!=='connected' || !received)throw Error('The local call did not connect.');
+  local=meter(ctx,stream);remote=meter(ctx,received);await sleep(500);
+  await post('play',{});await sleep(1500);
+  const mic=score(local.stop(),ref,ctx.sampleRate),call=score(remote.stop(),ref,ctx.sampleRate);
+  const hasPad=m=>m.peak>.01 && m.match>.65;
+  const result={browser:navigator.userAgent,track:track.label,echoCancellation:track.getSettings().echoCancellation,
+    rate:ctx.sampleRate,mic,call,passed:hasPad(mic)&&hasPad(call)};
+  await post('result',result);
+  show(result.passed?'Passed. The Bonk reached Safari and the receiving side of its local call.':'The pad was not identified at both stages.');
+  for(const [name,m] of [['Safari microphone',mic],['Call receiver',call]])show(name+' — peak '+m.peak+', waveform match '+m.match);
+ }catch(e){show(String(e));}
+ finally{if(a)a.close();if(b)b.close();if(stream)stream.getTracks().forEach(t=>t.stop());if(ctx)await ctx.close();button.disabled=false;}
+};
+</script>

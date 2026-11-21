@@ -1,0 +1,25 @@
+SpongeBob SquarePants · community soundboard excerpts
+Audio and characters belong to their respective rights holders. The following
+community listings identify the recordings used for these pads.
+
+Boo-womp
+https://www.myinstants.com/en/instant/spongebob-boowomp-96031/
+Dolphin censor
+https://www.myinstants.com/en/instant/dolphin-censor/
+My leg!
+https://www.myinstants.com/en/instant/my-leg-fish/
+Squidward steps
+https://www.myinstants.com/en/instant/squidward-walk-effect-39222/
+Mr. Krabs walk
+https://www.myinstants.com/en/instant/cartoon-mr-krab-walking-54475/
+Moments later
+https://www.myinstants.com/en/instant/spongebob-a-few-moments-later-39115/
+SpongeBob laugh
+https://www.myinstants.com/en/instant/spongebob-laugh-23766/
+Bubble wipe
+https://www.myinstants.com/en/instant/spongebob-bubble-transition-59932/
+
+Houston · Apollo 13 voice recording from NASA
+https://www.nasa.gov/historical-sounds/
+
+Other reaction cues are synthesised by scripts/make_sounds.py.
